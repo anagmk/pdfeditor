@@ -34,21 +34,47 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
 
   const tool = actions.tool
   const creating = tool !== 'select' && tool !== 'erase'
+  const beginTouchPinch = (event) => {
+    if (event.pointerType !== 'touch') return
+    const touchPoints = touchPointsRef.current
+    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (touchPoints.size < 2) return
+    const [first, second] = [...touchPoints.values()]
+    const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
+    if (!startDistance) return
+    event.preventDefault()
+    event.stopPropagation()
+    pinchRef.current = { startDistance, startScale: scale }
+    gestureRef.current = null
+    setGesture(null)
+  }
+
+  const moveTouchPinch = (event) => {
+    if (event.pointerType !== 'touch' || !touchPointsRef.current.has(event.pointerId)) return
+    const touchPoints = touchPointsRef.current
+    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (!pinchRef.current || touchPoints.size < 2) return
+    event.preventDefault()
+    event.stopPropagation()
+    const [first, second] = [...touchPoints.values()]
+    const distance = Math.hypot(second.x - first.x, second.y - first.y)
+    const nextScale = pinchRef.current.startScale * distance / pinchRef.current.startDistance
+    actions.setScale(Math.max(0.5, Math.min(3, nextScale)))
+  }
+
+  const endTouchPinch = (event) => {
+    if (event.pointerType !== 'touch') return
+    const wasPinching = Boolean(pinchRef.current)
+    touchPointsRef.current.delete(event.pointerId)
+    if (touchPointsRef.current.size < 2) pinchRef.current = null
+    if (wasPinching) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
   const beginGesture = (event) => {
     event.preventDefault()
-    if (event.pointerType === 'touch') {
-      const touchPoints = touchPointsRef.current
-      touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
-      if (touchPoints.size >= 2) {
-        const [first, second] = [...touchPoints.values()]
-        const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
-        pinchRef.current = { startDistance, startScale: scale }
-        gestureRef.current = null
-        setGesture(null)
-        event.currentTarget.setPointerCapture(event.pointerId)
-        return
-      }
-    }
     const point = getPoint(event)
     if (tool === 'text') {
       const id = actions.addObject({
@@ -77,19 +103,6 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
   }
 
   const updateGesture = (event) => {
-    if (event.pointerType === 'touch') {
-      const touchPoints = touchPointsRef.current
-      if (touchPoints.has(event.pointerId)) {
-        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
-      }
-      if (pinchRef.current && touchPoints.size >= 2) {
-        const [first, second] = [...touchPoints.values()]
-        const distance = Math.hypot(second.x - first.x, second.y - first.y)
-        const nextScale = pinchRef.current.startScale * distance / pinchRef.current.startDistance
-        actions.setScale(Math.max(0.5, Math.min(3, nextScale)))
-        return
-      }
-    }
     const currentGesture = gestureRef.current
     if (!currentGesture) return
     const point = getPoint(event)
@@ -102,12 +115,7 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
     setGesture(nextGesture)
   }
 
-  const finishGesture = (event) => {
-    if (event.pointerType === 'touch') {
-      touchPointsRef.current.delete(event.pointerId)
-      if (touchPointsRef.current.size < 2) pinchRef.current = null
-      if (pinchRef.current || !gestureRef.current) return
-    }
+  const finishGesture = () => {
     const completedGesture = gestureRef.current
     if (!completedGesture) return
     gestureRef.current = null
@@ -172,6 +180,10 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
       ref={pageRef}
       className="page"
       style={{ width: pageWidth * scale, height: pageHeight * scale }}
+      onPointerDownCapture={beginTouchPinch}
+      onPointerMoveCapture={moveTouchPinch}
+      onPointerUpCapture={endTouchPinch}
+      onPointerCancelCapture={endTouchPinch}
       onPointerDown={(event) => {
         if (!event.target.closest('[data-object]')) actions.selectObject(null)
       }}

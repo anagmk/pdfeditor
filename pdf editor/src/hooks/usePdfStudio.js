@@ -23,6 +23,8 @@ export function usePdfStudio({ imageInput }) {
   const bytesRef = useRef(null)
   const historyRef = useRef({ past: [], future: [] })
   const apiRef = useRef({ undo: () => {}, redo: () => {}, deleteSelected: () => {} })
+  const activeTouchPointersRef = useRef(new Set())
+  const activeDragRef = useRef(null)
   const toastTimeout = useRef(null)
 
   const toast = (text) => {
@@ -32,6 +34,25 @@ export function usePdfStudio({ imageInput }) {
   }
 
   useEffect(() => () => window.clearTimeout(toastTimeout.current), [])
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (event.pointerType !== 'touch') return
+      activeTouchPointersRef.current.add(event.pointerId)
+      if (activeTouchPointersRef.current.size > 1) activeDragRef.current?.cancelForPinch()
+    }
+    const onPointerEnd = (event) => {
+      if (event.pointerType === 'touch') activeTouchPointersRef.current.delete(event.pointerId)
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('pointerup', onPointerEnd, true)
+    window.addEventListener('pointercancel', onPointerEnd, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('pointerup', onPointerEnd, true)
+      window.removeEventListener('pointercancel', onPointerEnd, true)
+    }
+  }, [])
 
   const commit = (nextObjects) => {
     historyRef.current.past.push(objectsRef.current)
@@ -107,7 +128,21 @@ export function usePdfStudio({ imageInput }) {
     const startY = event.clientY
     const baseObjects = objectsRef.current
     let moved = false
+    let multiTouch = false
+    const cancelForPinch = () => {
+      multiTouch = true
+      if (moved) {
+        objectsRef.current = baseObjects
+        setObjects(baseObjects)
+        moved = false
+      }
+    }
+    activeDragRef.current = { cancelForPinch }
     const onMove = (moveEvent) => {
+      if (moveEvent.pointerType === 'touch' && activeTouchPointersRef.current.size > 1) {
+        cancelForPinch()
+        return
+      }
       const dx = moveEvent.clientX - startX
       const dy = moveEvent.clientY - startY
       if (!moved && Math.hypot(dx, dy) < 4) return
@@ -121,11 +156,12 @@ export function usePdfStudio({ imageInput }) {
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      if (activeDragRef.current?.cancelForPinch === cancelForPinch) activeDragRef.current = null
       if (moved) {
         historyRef.current.past.push(baseObjects)
         historyRef.current.future = []
         setHistoryStatus({ canUndo: true, canRedo: false })
-      } else if (onTap) onTap()
+      } else if (onTap && !multiTouch) onTap()
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)

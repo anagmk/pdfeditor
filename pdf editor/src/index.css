@@ -48,7 +48,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .tool-scroll { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 35%) transparent; }
 .tool-properties-scroll { scrollbar-width: thin; scrollbar-color: #c8c9e5 transparent; }
 
-.page { position: relative; margin: 0 auto 18px; overflow: hidden; background: #fff; box-shadow: 0 4px 18px rgb(24 39 54 / 22%); text-align: left; }
+.page { position: relative; margin: 0 auto 18px; overflow: hidden; background: #fff; box-shadow: 0 4px 18px rgb(24 39 54 / 22%); text-align: left; touch-action: pan-x pan-y; }
 .page canvas { display: block; width: 100%; height: 100%; }
 .page svg, .page .page-capture { position: absolute; inset: 0; width: 100%; height: 100%; }
 .page-capture { z-index: 6; cursor: crosshair; touch-action: none; }
