@@ -8,6 +8,8 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
   const canvasRef = useRef(null)
   const pageRef = useRef(null)
   const gestureRef = useRef(null)
+  const touchPointsRef = useRef(new Map())
+  const pinchRef = useRef(null)
   const [gesture, setGesture] = useState(null)
 
   useEffect(() => {
@@ -34,6 +36,19 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
   const creating = tool !== 'select' && tool !== 'erase'
   const beginGesture = (event) => {
     event.preventDefault()
+    if (event.pointerType === 'touch') {
+      const touchPoints = touchPointsRef.current
+      touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      if (touchPoints.size >= 2) {
+        const [first, second] = [...touchPoints.values()]
+        const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
+        pinchRef.current = { startDistance, startScale: scale }
+        gestureRef.current = null
+        setGesture(null)
+        event.currentTarget.setPointerCapture(event.pointerId)
+        return
+      }
+    }
     const point = getPoint(event)
     if (tool === 'text') {
       const id = actions.addObject({
@@ -62,6 +77,19 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
   }
 
   const updateGesture = (event) => {
+    if (event.pointerType === 'touch') {
+      const touchPoints = touchPointsRef.current
+      if (touchPoints.has(event.pointerId)) {
+        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      }
+      if (pinchRef.current && touchPoints.size >= 2) {
+        const [first, second] = [...touchPoints.values()]
+        const distance = Math.hypot(second.x - first.x, second.y - first.y)
+        const nextScale = pinchRef.current.startScale * distance / pinchRef.current.startDistance
+        actions.setScale(Math.max(0.5, Math.min(3, nextScale)))
+        return
+      }
+    }
     const currentGesture = gestureRef.current
     if (!currentGesture) return
     const point = getPoint(event)
@@ -74,7 +102,12 @@ export default function PdfPage({ index, info, scale, objects, actions }) {
     setGesture(nextGesture)
   }
 
-  const finishGesture = () => {
+  const finishGesture = (event) => {
+    if (event.pointerType === 'touch') {
+      touchPointsRef.current.delete(event.pointerId)
+      if (touchPointsRef.current.size < 2) pinchRef.current = null
+      if (pinchRef.current || !gestureRef.current) return
+    }
     const completedGesture = gestureRef.current
     if (!completedGesture) return
     gestureRef.current = null

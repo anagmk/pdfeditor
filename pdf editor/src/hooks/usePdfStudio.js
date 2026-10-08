@@ -402,6 +402,7 @@ export function usePdfStudio({ imageInput }) {
   const pageActions = {
     tool,
     setTool,
+    setScale,
     style,
     selectedId,
     selectObject,
